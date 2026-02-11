@@ -63,6 +63,42 @@ c3.metric("Highest participant Avg Score", f"{best_row['Avg Score']:.2f}")
 c4.metric("Lowest participant Avg Score", f"{worst_row['Avg Score']:.2f}")
 
 # -------------------------
+# Quick Demographic Distribution (Age + Gender)
+# -------------------------
+st.markdown("**Participant Distribution**")
+
+fig_dist, axes = plt.subplots(1, 2, figsize=(10, 3))
+
+# --- Gender Distribution ---
+sns.countplot(
+    data=filtered,
+    x="Gender",
+    palette={"M": "tab:blue", "F": "tab:pink"},
+    ax=axes[0]
+)
+axes[0].set_title("Gender Distribution")
+axes[0].set_xlabel("")
+axes[0].set_ylabel("Count")
+
+# --- Age Distribution ---
+sns.countplot(
+    data=filtered,
+    x="Age",
+    palette="pastel",
+    order=sorted(filtered["Age"].unique()),
+    ax=axes[1]
+)
+axes[1].set_title("Age Group Distribution")
+axes[1].set_xlabel("")
+axes[1].set_ylabel("Count")
+
+sns.despine(offset=10, trim=True)
+fig_dist.tight_layout()
+
+st.pyplot(fig_dist)
+
+
+# -------------------------
 # Boxplots (Seaborn) + selector + legend outside
 # -------------------------
 st.markdown("**Score Distribution (Boxplots)**")
