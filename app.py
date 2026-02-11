@@ -68,7 +68,7 @@ st.caption(
 )
 
 # -------------------------
-# Boxplots (horizontal) with grouping option
+# Boxplots (horizontal) with colored grouping
 # -------------------------
 st.markdown("**Score Distribution (Boxplots)**")
 
@@ -85,27 +85,71 @@ long_df = filtered.melt(
     value_name="Score"
 )
 
-# Base encoding: horizontal boxplot (Score on x, Question on y)
-base = alt.Chart(long_df).mark_boxplot().encode(
-    x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
-    y=alt.Y("Question:N", title=""),
-    tooltip=["Participant", "Gender", "Age", "Question", "Score"]
-).properties(height=260)
-
+# -------------------------
+# CASE 1: No grouping
+# -------------------------
 if group_by == "None":
-    st.altair_chart(base, use_container_width=True)
 
-else:
-    group_field = "Gender" if group_by == "Gender" else "Age"
-
-    # Facet by group so distributions are easy to compare
-    faceted = base.facet(
-        row=alt.Row(f"{group_field}:N", title=group_by)
-    ).resolve_scale(
-        y="independent"
+    chart = (
+        alt.Chart(long_df)
+        .mark_boxplot()
+        .encode(
+            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+            y=alt.Y("Question:N", title=""),
+            tooltip=["Participant", "Gender", "Age", "Question", "Score"]
+        )
+        .properties(height=260)
     )
 
-    st.altair_chart(faceted, use_container_width=True)
+    st.altair_chart(chart, use_container_width=True)
+
+# -------------------------
+# CASE 2: Group by Gender
+# -------------------------
+elif group_by == "Gender":
+
+    chart = (
+        alt.Chart(long_df)
+        .mark_boxplot()
+        .encode(
+            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+            y=alt.Y("Question:N", title=""),
+            color=alt.Color(
+                "Gender:N",
+                scale=alt.Scale(
+                    domain=["M", "F"],
+                    range=["#3B82F6", "#EC4899"]  # blue, pink
+                ),
+                legend=alt.Legend(title="Gender")
+            ),
+            xOffset="Gender:N",  # <<< KEY: puts boxes side-by-side
+            tooltip=["Participant", "Gender", "Age", "Question", "Score"]
+        )
+        .properties(height=260)
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
+# -------------------------
+# CASE 3: Group by Age
+# -------------------------
+else:
+
+    chart = (
+        alt.Chart(long_df)
+        .mark_boxplot()
+        .encode(
+            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+            y=alt.Y("Question:N", title=""),
+            color=alt.Color("Age:N", legend=alt.Legend(title="Age Group")),
+            xOffset="Age:N",   # side-by-side by age
+            tooltip=["Participant", "Gender", "Age", "Question", "Score"]
+        )
+        .properties(height=260)
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
 
 # -------------------------
 # Tabs
