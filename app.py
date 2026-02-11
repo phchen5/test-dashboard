@@ -1,4 +1,4 @@
-# app.py (Plotly version)
+# app.py (Plotly version with Plotly tabs)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -45,6 +45,13 @@ if filtered.empty:
     st.warning("No data matches the current filters. Try expanding Gender/Age selections.")
     st.stop()
 
+long_df = to_long(filtered)
+
+# Orders + colors
+question_order = QUESTION_COLS
+age_order = sorted(filtered["Age"].dropna().unique())
+gender_color = {"M": "#3B82F6", "F": "#EC4899"}
+
 # -------------------------
 # Overview
 # -------------------------
@@ -82,7 +89,6 @@ st.markdown("### Participant Distribution")
 gender_counts = filtered["Gender"].value_counts().reset_index()
 gender_counts.columns = ["Gender", "Count"]
 
-age_order = sorted(filtered["Age"].dropna().unique())
 age_counts = (
     filtered["Age"]
     .value_counts()
@@ -102,16 +108,19 @@ with colL:
         y="Count",
         text="Count",
         template="plotly_dark",
-        title="Gender"
+        title="Gender",
     )
-    fig_gender.update_traces(marker_color=["#3B82F6" if g == "M" else "#EC4899" for g in gender_counts["Gender"]])
+    fig_gender.update_traces(
+        marker_color=[gender_color.get(g, "#999999") for g in gender_counts["Gender"]],
+        textposition="outside",
+        cliponaxis=False,
+    )
     fig_gender.update_layout(
         margin=dict(l=20, r=20, t=50, b=20),
         xaxis_title="",
         yaxis_title="Count",
-        yaxis_dtick=1,
     )
-    fig_gender.update_traces(textposition="outside", cliponaxis=False)
+    fig_gender.update_yaxes(dtick=1)
     st.plotly_chart(fig_gender, use_container_width=True)
 
 with colR:
@@ -124,14 +133,14 @@ with colR:
         title="Age Group",
         category_orders={"Age": age_order},
     )
+    fig_age.update_traces(textposition="outside", cliponaxis=False)
     fig_age.update_layout(
         margin=dict(l=20, r=20, t=50, b=20),
         xaxis_title="",
         yaxis_title="Count",
-        yaxis_dtick=1,
         xaxis_tickangle=-25,
     )
-    fig_age.update_traces(textposition="outside", cliponaxis=False)
+    fig_age.update_yaxes(dtick=1)
     st.plotly_chart(fig_age, use_container_width=True)
 
 st.divider()
@@ -141,37 +150,21 @@ st.divider()
 # -------------------------
 st.markdown("### Score Distribution")
 
-split_by = st.selectbox(
-    "Split distribution by",
-    options=["None", "Gender", "Age"],
-    index=0
-)
-
-long_df = to_long(filtered)
-
-# Order questions nicely (keeps Q1..Q4 order)
-question_order = QUESTION_COLS
-
-color_map_gender = {"M": "#3B82F6", "F": "#EC4899"}
+split_by = st.selectbox("Split distribution by", ["None", "Gender", "Age"], index=0)
 
 if split_by == "None":
     fig_box = px.box(
         long_df,
         x="Question",
         y="Score",
-        points="all",  # show individual points (nice for small datasets)
+        points="all",
         template="plotly_dark",
         category_orders={"Question": question_order},
-        title="Boxplots by Question"
+        title="Boxplots by Question",
     )
-    fig_box.update_layout(
-        margin=dict(l=20, r=20, t=60, b=20),
-        xaxis_title="",
-        yaxis_title="Score",
-    )
+    fig_box.update_layout(margin=dict(l=20, r=20, t=60, b=20), xaxis_title="", yaxis_title="Score")
 else:
     hue_col = "Gender" if split_by == "Gender" else "Age"
-
     fig_box = px.box(
         long_df,
         x="Question",
@@ -180,29 +173,20 @@ else:
         points="all",
         template="plotly_dark",
         category_orders={"Question": question_order, "Age": age_order},
-        color_discrete_map=color_map_gender if hue_col == "Gender" else None,
-        title=f"Boxplots by Question (split by {hue_col})"
+        color_discrete_map=gender_color if hue_col == "Gender" else None,
+        title=f"Boxplots by Question (split by {hue_col})",
     )
-
-    # Legend outside to the right
     fig_box.update_layout(
-        legend=dict(
-            title=hue_col,
-            x=1.02,
-            y=1.0,
-            xanchor="left",
-            yanchor="top"
-        ),
-        margin=dict(l=20, r=180, t=60, b=20),  # extra right margin for legend
+        legend=dict(title=hue_col, x=1.02, y=1.0, xanchor="left", yanchor="top"),
+        margin=dict(l=20, r=180, t=60, b=20),
         xaxis_title="",
         yaxis_title="Score",
     )
 
-# Force integer ticks + fix score range (1–7 scale; keeping 0–7 is fine too)
 fig_box.update_yaxes(range=[0, 7], dtick=1)
-
 st.plotly_chart(fig_box, use_container_width=True)
 
+st.divider()
 
 # -------------------------
 # Tabs (Plotly)
