@@ -74,11 +74,6 @@ c4.metric(
     help=f"Lowest participant average across Q1–Q4 in the filtered data: {worst_row['Participant']}."
 )
 
-st.caption(
-    f"Highest: {best_row['Participant']} ({best_row['Gender']}, {best_row['Age']}) • "
-    f"Lowest: {worst_row['Participant']} ({worst_row['Gender']}, {worst_row['Age']})."
-)
-
 st.divider()
 
 # -------------------------
