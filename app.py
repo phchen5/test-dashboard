@@ -1,60 +1,252 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 st.set_page_config(page_title="Survey Dashboard", layout="wide")
-st.title("Survey Dashboard (Test Data)")
 
-# Load data
+QUESTION_COLS = ["Question #1", "Question #2", "Question #3", "Question #4"]
+
 @st.cache_data
-def load_data(path="test_data.csv"):
+def load_data(path="test_data.csv") -> pd.DataFrame:
     df = pd.read_csv(path)
+    # Compute average score across questions
+    df["Avg Score"] = df[QUESTION_COLS].mean(axis=1)
     return df
 
 df = load_data()
 
-# Basic cleanup / computed columns
-question_cols = ["Question #1", "Question #2", "Question #3", "Question #4"]
-df["Avg Score"] = df[question_cols].mean(axis=1)
+st.title("Survey Dashboard")
 
-# Sidebar filters
+# -------------------------
+# Sidebar filters (global)
+# -------------------------
 st.sidebar.header("Filters")
-gender_filter = st.sidebar.multiselect("Gender", sorted(df["Gender"].unique()), default=sorted(df["Gender"].unique()))
-age_filter = st.sidebar.multiselect("Age", sorted(df["Age"].unique()), default=sorted(df["Age"].unique()))
+gender_filter = st.sidebar.multiselect(
+    "Gender",
+    options=sorted(df["Gender"].unique()),
+    default=sorted(df["Gender"].unique())
+)
+age_filter = st.sidebar.multiselect(
+    "Age",
+    options=sorted(df["Age"].unique()),
+    default=sorted(df["Age"].unique())
+)
 
 filtered = df[df["Gender"].isin(gender_filter) & df["Age"].isin(age_filter)].copy()
 
-# Show data
-st.subheader("Data Preview")
-st.dataframe(filtered, use_container_width=True)
+if filtered.empty:
+    st.warning("No data matches the current filters. Try expanding Gender/Age selections.")
+    st.stop()
 
-# Summary metrics
-st.subheader("Summary")
-col1, col2, col3 = st.columns(3)
-col1.metric("Participants", len(filtered))
-col2.metric("Overall Avg Score", f"{filtered['Avg Score'].mean():.2f}" if len(filtered) else "—")
-col3.metric("Overall Q1 Avg", f"{filtered['Question #1'].mean():.2f}" if len(filtered) else "—")
+# -------------------------
+# Top overview section
+# -------------------------
+st.subheader("Overview")
 
-# Question averages
-st.subheader("Average Score by Question")
-q_means = filtered[question_cols].mean().to_frame("Average").reset_index().rename(columns={"index": "Question"})
-st.bar_chart(q_means.set_index("Question"))
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Participants", len(filtered))
+c2.metric("Overall Avg Score", f"{filtered['Avg Score'].mean():.2f}")
+c3.metric("Highest Avg", f"{filtered['Avg Score'].max():.2f}")
+c4.metric("Lowest Avg", f"{filtered['Avg Score'].min():.2f}")
 
-# Breakdowns
-st.subheader("Breakdowns")
+# Summary statistics table
+st.markdown("**Summary Statistics (Filtered Data)**")
+summary_stats = filtered[QUESTION_COLS + ["Avg Score"]].describe().T
+summary_stats = summary_stats[["count", "mean", "std", "min", "25%", "50%", "75%", "max"]].round(2)
+st.dataframe(summary_stats, use_container_width=True)
 
-c1, c2 = st.columns(2)
+# Boxplots for each question
+st.markdown("**Score Distribution (Boxplots)**")
 
-with c1:
-    st.write("Average by Gender")
-    gender_means = filtered.groupby("Gender")[question_cols + ["Avg Score"]].mean()
-    st.dataframe(gender_means.round(2), use_container_width=True)
+long_df = filtered.melt(
+    id_vars=["Participant", "Gender", "Age"],
+    value_vars=QUESTION_COLS,
+    var_name="Question",
+    value_name="Score"
+)
 
-with c2:
-    st.write("Average by Age Group")
-    age_means = filtered.groupby("Age")[question_cols + ["Avg Score"]].mean()
-    st.dataframe(age_means.round(2), use_container_width=True)
+box = (
+    alt.Chart(long_df)
+    .mark_boxplot()
+    .encode(
+        x=alt.X("Question:N", title=""),
+        y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+        tooltip=["Question", "Score"]
+    )
+    .properties(height=260)
+)
 
-# Optional: participant-level view
-st.subheader("Participant Comparison (Average Score)")
-participant_scores = filtered[["Participant", "Avg Score"]].set_index("Participant").sort_values("Avg Score", ascending=False)
-st.bar_chart(participant_scores)
+st.altair_chart(box, use_container_width=True)
+
+st.divider()
+
+# -------------------------
+# Tabs
+# -------------------------
+tab1, tab2 = st.tabs(["Participant View", "Question View"])
+
+# -------------------------
+# Tab 1: Participant View
+# -------------------------
+with tab1:
+    st.subheader("Participant View")
+
+    participant = st.selectbox(
+        "Select a participant",
+        options=sorted(filtered["Participant"].unique())
+    )
+
+    p = filtered[filtered["Participant"] == participant].iloc[0]
+
+    left, right = st.columns([1, 2])
+
+    with left:
+        st.markdown("**Participant Info**")
+        st.write(f"**Participant:** {p['Participant']}")
+        st.write(f"**Gender:** {p['Gender']}")
+        st.write(f"**Age:** {p['Age']}")
+        st.write(f"**Avg Score:** {p['Avg Score']:.2f}")
+
+        st.markdown("**Raw Scores**")
+        score_table = pd.DataFrame({
+            "Question": QUESTION_COLS,
+            "Score": [p[q] for q in QUESTION_COLS]
+        })
+        st.dataframe(score_table, hide_index=True, use_container_width=True)
+
+    with right:
+        # Compare participant scores vs overall mean
+        overall_means = filtered[QUESTION_COLS].mean().reset_index()
+        overall_means.columns = ["Question", "Overall Mean"]
+
+        participant_scores = pd.DataFrame({
+            "Question": QUESTION_COLS,
+            "Participant Score": [p[q] for q in QUESTION_COLS]
+        })
+
+        comp = overall_means.merge(participant_scores, on="Question")
+        comp_long = comp.melt("Question", var_name="Series", value_name="Score")
+
+        chart = (
+            alt.Chart(comp_long)
+            .mark_bar()
+            .encode(
+                x=alt.X("Question:N", title=""),
+                y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 7])),
+                color="Series:N",
+                tooltip=["Question", "Series", "Score"]
+            )
+            .properties(height=300)
+        )
+
+        st.markdown("**Participant vs Overall Mean**")
+        st.altair_chart(chart, use_container_width=True)
+
+    st.markdown("**Where do they rank (Avg Score)?**")
+    ranking = (
+        filtered[["Participant", "Avg Score", "Gender", "Age"]]
+        .sort_values("Avg Score", ascending=False)
+        .reset_index(drop=True)
+    )
+    ranking["Rank"] = ranking.index + 1
+    st.dataframe(ranking[["Rank", "Participant", "Avg Score", "Gender", "Age"]], use_container_width=True)
+
+# -------------------------
+# Tab 2: Question View
+# -------------------------
+with tab2:
+    st.subheader("Question View")
+
+    q = st.selectbox("Select a question", options=QUESTION_COLS)
+
+    q_df = filtered[["Participant", "Gender", "Age", q]].rename(columns={q: "Score"})
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Mean", f"{q_df['Score'].mean():.2f}")
+    c2.metric("Median", f"{q_df['Score'].median():.2f}")
+    c3.metric("Std Dev", f"{q_df['Score'].std():.2f}")
+
+    # Distribution histogram
+    hist = (
+        alt.Chart(q_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Score:Q", bin=alt.Bin(step=1), title="Score"),
+            y=alt.Y("count():Q", title="Count"),
+            tooltip=["count()"]
+        )
+        .properties(height=250)
+    )
+
+    # Boxplot by gender
+    box_gender = (
+        alt.Chart(q_df)
+        .mark_boxplot()
+        .encode(
+            x=alt.X("Gender:N", title="Gender"),
+            y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+            tooltip=["Gender", "Score"]
+        )
+        .properties(height=250)
+    )
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Distribution**")
+        st.altair_chart(hist, use_container_width=True)
+    with right:
+        st.markdown("**By Gender**")
+        st.altair_chart(box_gender, use_container_width=True)
+
+    # Table: top/bottom participants for that question
+    st.markdown("**Top / Bottom Participants**")
+    top = q_df.sort_values("Score", ascending=False).head(5)
+    bottom = q_df.sort_values("Score", ascending=True).head(5)
+
+    t1, t2 = st.columns(2)
+    with t1:
+        st.markdown("Top 5")
+        st.dataframe(top, use_container_width=True, hide_index=True)
+    with t2:
+        st.markdown("Bottom 5")
+        st.dataframe(bottom, use_container_width=True, hide_index=True)
+
+    # Breakdown by age
+    st.markdown("**Average by Age Group**")
+    age_means = q_df.groupby("Age")["Score"].mean().reset_index().rename(columns={"Score": "Mean Score"})
+    age_chart = (
+        alt.Chart(age_means)
+        .mark_bar()
+        .encode(
+            x=alt.X("Age:N", title="Age Group"),
+            y=alt.Y("Mean Score:Q", title="Mean Score", scale=alt.Scale(domain=[0, 7])),
+            tooltip=["Age", "Mean Score"]
+        )
+        .properties(height=250)
+    )
+    st.altair_chart(age_chart, use_container_width=True)
+
+st.divider()
+
+# -------------------------
+# Data viewer + download
+# -------------------------
+st.subheader("Data")
+
+view_option = st.selectbox(
+    "Choose what to view",
+    options=["Filtered data (current view)", "Full data (all rows)"]
+)
+
+data_to_show = filtered if view_option.startswith("Filtered") else df
+
+with st.expander("View dataset"):
+    st.dataframe(data_to_show, use_container_width=True)
+
+csv_bytes = data_to_show.to_csv(index=False).encode("utf-8")
+st.download_button(
+    label="Download CSV",
+    data=csv_bytes,
+    file_name="survey_data.csv",
+    mime="text/csv"
+)
