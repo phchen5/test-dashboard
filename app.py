@@ -63,9 +63,15 @@ c3.metric("Highest participant Avg Score", f"{best_row['Avg Score']:.2f}")
 c4.metric("Lowest participant Avg Score", f"{worst_row['Avg Score']:.2f}")
 
 # -------------------------
-# Boxplots (Seaborn)
+# Boxplots (Seaborn) + selector + legend outside
 # -------------------------
 st.markdown("**Score Distribution (Boxplots)**")
+
+split_by = st.selectbox(
+    "Split distribution by",
+    options=["None", "Gender", "Age"],
+    index=0
+)
 
 long_df = filtered.melt(
     id_vars=["Participant", "Gender", "Age"],
@@ -74,62 +80,45 @@ long_df = filtered.melt(
     value_name="Score"
 )
 
-# ---------- 1) Overall ----------
-st.markdown("**Overall Distribution**")
+fig, ax = plt.subplots(figsize=(10, 4))
 
-fig1, ax1 = plt.subplots(figsize=(10, 4))
-sns.boxplot(
-    data=long_df,
-    x="Question",
-    y="Score",
-    ax=ax1
-)
-sns.despine(offset=10, trim=True)
-ax1.set_ylim(0, 7)
-ax1.set_xlabel("")
-ax1.set_ylabel("Score")
-fig1.tight_layout()
-st.pyplot(fig1)
+if split_by == "None":
+    sns.boxplot(
+        data=long_df,
+        x="Question",
+        y="Score",
+        ax=ax
+    )
+else:
+    hue_col = "Gender" if split_by == "Gender" else "Age"
 
+    sns.boxplot(
+        data=long_df,
+        x="Question",
+        y="Score",
+        hue=hue_col,
+        palette={"M": "tab:blue", "F": "tab:pink"} if hue_col == "Gender" else "pastel",
+        ax=ax
+    )
 
-# ---------- 2) Hue = Gender ----------
-st.markdown("**Distribution by Gender**")
+    # Move legend OUTSIDE the plot area (right side)
+    ax.legend(
+        title=hue_col,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1),
+        borderaxespad=0.0,
+        frameon=False
+    )
 
-fig2, ax2 = plt.subplots(figsize=(10, 4))
-sns.boxplot(
-    data=long_df,
-    x="Question",
-    y="Score",
-    hue="Gender",
-    palette={"M": "tab:blue", "F": "tab:pink"},
-    ax=ax2
-)
-ax2.set_ylim(0, 7)
-ax2.set_xlabel("")
-ax2.set_ylabel("Score")
-ax2.legend(title="Gender")
-fig2.tight_layout()
-st.pyplot(fig2)
+ax.set_ylim(0, 7)
+ax.set_xlabel("")
+ax.set_ylabel("Score")
 
+# Make room on the right for the outside legend (only really needed when split_by != None)
+fig.tight_layout(rect=[0, 0, 0.82, 1])
 
-# ---------- 3) Hue = Age ----------
-st.markdown("**Distribution by Age Group**")
+st.pyplot(fig)
 
-fig3, ax3 = plt.subplots(figsize=(10, 4))
-sns.boxplot(
-    data=long_df,
-    x="Question",
-    y="Score",
-    hue="Age",
-    palette="pastel",
-    ax=ax3
-)
-ax3.set_ylim(0, 7)
-ax3.set_xlabel("")
-ax3.set_ylabel("Score")
-ax3.legend(title="Age")
-fig3.tight_layout()
-st.pyplot(fig3)
 
 
 # -------------------------
