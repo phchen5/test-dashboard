@@ -205,12 +205,13 @@ st.plotly_chart(fig_box, use_container_width=True)
 
 
 # -------------------------
-# Tabs
+# Tabs (Plotly)
 # -------------------------
 tab1, tab2 = st.tabs(["Participant View", "Question View"])
 
 with tab1:
     st.subheader("Participant View")
+
     participant = st.selectbox("Select a participant", options=sorted(filtered["Participant"].unique()))
     p = filtered[filtered["Participant"] == participant].iloc[0]
 
@@ -223,31 +224,33 @@ with tab1:
         st.write(f"**Age:** {p['Age']}")
         st.write(f"**Avg Score (Q1–Q4):** {p['Avg Score']:.2f}")
 
-        st.markdown("**Raw Scores**")
-        st.dataframe(
-            pd.DataFrame({"Question": QUESTION_COLS, "Score": [p[q] for q in QUESTION_COLS]}),
-            hide_index=True,
-            use_container_width=True
-        )
+        score_table = pd.DataFrame({"Question": QUESTION_COLS, "Score": [p[q] for q in QUESTION_COLS]})
+        st.dataframe(score_table, hide_index=True, use_container_width=True)
 
     with right:
         st.markdown("**Participant vs Overall Mean (by question)**")
+
         comp = pd.DataFrame({
             "Question": QUESTION_COLS,
             "Participant": [p[q] for q in QUESTION_COLS],
             "Overall Mean": [filtered[q].mean() for q in QUESTION_COLS],
         })
+
         comp_long = comp.melt("Question", var_name="Series", value_name="Score")
 
-        fig, ax = plt.subplots(figsize=(10, 3.5))
-        sns.barplot(data=comp_long, x="Question", y="Score", hue="Series", ax=ax)
-        sns.despine(offset=10, trim=True)
-        ax.set_ylim(0, 7)
-        ax.set_xlabel("")
-        ax.set_ylabel("Score")
-        ax.legend(title="")
-        fig.tight_layout()
-        st.pyplot(fig)
+        fig_comp = px.bar(
+            comp_long,
+            x="Question",
+            y="Score",
+            color="Series",
+            barmode="group",
+            template="plotly_dark",
+            category_orders={"Question": question_order},
+            title="",
+        )
+        fig_comp.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_title="", yaxis_title="Score")
+        fig_comp.update_yaxes(range=[0, 7], dtick=1)
+        st.plotly_chart(fig_comp, use_container_width=True)
 
     st.markdown("**Ranking (Avg Score across Q1–Q4)**")
     ranking = (
@@ -260,6 +263,7 @@ with tab1:
 
 with tab2:
     st.subheader("Question View")
+
     q = st.selectbox("Select a question", options=QUESTION_COLS)
 
     q_df = filtered[["Participant", "Gender", "Age", q]].rename(columns={q: "Score"})
@@ -273,28 +277,38 @@ with tab2:
 
     with left:
         st.markdown("**Distribution (histogram)**")
-        fig, ax = plt.subplots(figsize=(6, 3.5))
-        sns.histplot(data=q_df, x="Score", bins=range(0, 9), ax=ax)
-        sns.despine(offset=10, trim=True)
-        ax.set_xlabel("Score")
-        ax.set_ylabel("Count")
-        fig.tight_layout()
-        st.pyplot(fig)
+        fig_hist = px.histogram(
+            q_df,
+            x="Score",
+            nbins=7,
+            template="plotly_dark",
+            title="",
+        )
+        fig_hist.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Score", yaxis_title="Count")
+        fig_hist.update_xaxes(dtick=1)
+        fig_hist.update_yaxes(dtick=1)
+        st.plotly_chart(fig_hist, use_container_width=True)
 
     with right:
         st.markdown("**By Gender (boxplot)**")
-        fig, ax = plt.subplots(figsize=(6, 3.5))
-        sns.boxplot(data=q_df, x="Gender", y="Score", palette=gender_palette, ax=ax)
-        sns.despine(offset=10, trim=True)
-        ax.set_ylim(0, 7)
-        ax.set_xlabel("Gender")
-        ax.set_ylabel("Score")
-        fig.tight_layout()
-        st.pyplot(fig)
+        fig_q_gender = px.box(
+            q_df,
+            x="Gender",
+            y="Score",
+            points="all",
+            template="plotly_dark",
+            color="Gender",
+            color_discrete_map=gender_color,
+            title="",
+        )
+        fig_q_gender.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Gender", yaxis_title="Score", showlegend=False)
+        fig_q_gender.update_yaxes(range=[0, 7], dtick=1)
+        st.plotly_chart(fig_q_gender, use_container_width=True)
 
     st.markdown("**Top / Bottom Participants**")
     top = q_df.sort_values("Score", ascending=False).head(5)
     bottom = q_df.sort_values("Score", ascending=True).head(5)
+
     t1, t2 = st.columns(2)
     with t1:
         st.markdown("Top 5")
@@ -302,6 +316,24 @@ with tab2:
     with t2:
         st.markdown("Bottom 5")
         st.dataframe(bottom, hide_index=True, use_container_width=True)
+
+    st.markdown("**Average by Age Group**")
+    age_means = q_df.groupby("Age")["Score"].mean().reindex(age_order).reset_index()
+    age_means.columns = ["Age", "Mean Score"]
+
+    fig_age_mean = px.bar(
+        age_means,
+        x="Age",
+        y="Mean Score",
+        template="plotly_dark",
+        category_orders={"Age": age_order},
+        title="",
+        text="Mean Score",
+    )
+    fig_age_mean.update_traces(texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False)
+    fig_age_mean.update_layout(margin=dict(l=20, r=20, t=20, b=20), xaxis_title="Age Group", yaxis_title="Mean Score", xaxis_tickangle=-25)
+    fig_age_mean.update_yaxes(range=[0, 7], dtick=1)
+    st.plotly_chart(fig_age_mean, use_container_width=True)
 
 st.divider()
 
