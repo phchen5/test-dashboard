@@ -68,29 +68,140 @@ st.caption(
 )
 
 
-
+import streamlit as st
+import pandas as pd
 import altair as alt
 
-# long_df has columns: Participant, Gender, Age, Question, Score
+st.set_page_config(page_title="Survey Dashboard", layout="wide")
 
-gender_chart = (
-    alt.Chart(long_df)
-    .mark_boxplot()
-    .encode(
-        x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
-        y=alt.Y("Question:N", title=""),
-        yOffset=alt.YOffset("Gender:N"),  # <<< KEY for side-by-side within each question
-        color=alt.Color(
-            "Gender:N",
-            scale=alt.Scale(domain=["M", "F"], range=["#3B82F6", "#EC4899"]),
-            legend=alt.Legend(title="Gender")
-        ),
-        tooltip=["Question", "Gender", "Score", "Participant", "Age"]
-    )
-    .properties(height=260)
+QUESTION_COLS = ["Question #1", "Question #2", "Question #3", "Question #4"]
+
+@st.cache_data
+def load_data(path: str = "test_data.csv") -> pd.DataFrame:
+    df = pd.read_csv(path)
+    # Participant average across all questions
+    df["Avg Score"] = df[QUESTION_COLS].mean(axis=1)
+    return df
+
+df = load_data()
+
+st.title("Survey Dashboard")
+
+# -------------------------
+# Sidebar filters (global)
+# -------------------------
+st.sidebar.header("Filters")
+gender_filter = st.sidebar.multiselect(
+    "Gender",
+    options=sorted(df["Gender"].dropna().unique()),
+    default=sorted(df["Gender"].dropna().unique())
+)
+age_filter = st.sidebar.multiselect(
+    "Age",
+    options=sorted(df["Age"].dropna().unique()),
+    default=sorted(df["Age"].dropna().unique())
 )
 
-st.altair_chart(gender_chart, use_container_width=True)
+filtered = df[df["Gender"].isin(gender_filter) & df["Age"].isin(age_filter)].copy()
+
+if filtered.empty:
+    st.warning("No data matches the current filters. Try expanding Gender/Age selections.")
+    st.stop()
+
+# -------------------------
+# Overview (top part)
+# -------------------------
+st.subheader("Overview")
+
+best_row = filtered.loc[filtered["Avg Score"].idxmax()]
+worst_row = filtered.loc[filtered["Avg Score"].idxmin()]
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Participants (filtered)", len(filtered))
+c2.metric("Overall mean (Avg Score)", f"{filtered['Avg Score'].mean():.2f}")
+c3.metric(
+    "Highest participant Avg Score",
+    f"{best_row['Avg Score']:.2f}",
+    help=f"Highest participant average across Question #1–#4 within the filtered data (Participant {best_row['Participant']})."
+)
+c4.metric(
+    "Lowest participant Avg Score",
+    f"{worst_row['Avg Score']:.2f}",
+    help=f"Lowest participant average across Question #1–#4 within the filtered data (Participant {worst_row['Participant']})."
+)
+
+st.caption(
+    f"Highest Avg Score: Participant {best_row['Participant']} ({best_row['Gender']}, {best_row['Age']}) • "
+    f"Lowest Avg Score: Participant {worst_row['Participant']} ({worst_row['Gender']}, {worst_row['Age']})."
+)
+
+# -------------------------
+# Horizontal boxplots (side-by-side within each question)
+# -------------------------
+st.markdown("**Score Distribution (Boxplots)**")
+
+group_by = st.radio(
+    "Compare distributions by",
+    options=["None", "Gender", "Age"],
+    horizontal=True
+)
+
+long_df = filtered.melt(
+    id_vars=["Participant", "Gender", "Age"],
+    value_vars=QUESTION_COLS,
+    var_name="Question",
+    value_name="Score"
+)
+
+if group_by == "None":
+    chart = (
+        alt.Chart(long_df)
+        .mark_boxplot()
+        .encode(
+            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+            y=alt.Y("Question:N", title=""),
+            tooltip=["Question", "Score", "Participant", "Gender", "Age"]
+        )
+        .properties(height=260)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+elif group_by == "Gender":
+    chart = (
+        alt.Chart(long_df)
+        .mark_boxplot()
+        .encode(
+            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+            y=alt.Y("Question:N", title=""),
+            # KEY: for horizontal boxplots, use yOffset to put M/F side-by-side within each question
+            yOffset=alt.YOffset("Gender:N"),
+            color=alt.Color(
+                "Gender:N",
+                scale=alt.Scale(domain=["M", "F"], range=["#3B82F6", "#EC4899"]),  # blue, pink
+                legend=alt.Legend(title="Gender")
+            ),
+            tooltip=["Question", "Gender", "Score", "Participant", "Age"]
+        )
+        .properties(height=300)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+else:  # group_by == "Age"
+    chart = (
+        alt.Chart(long_df)
+        .mark_boxplot()
+        .encode(
+            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+            y=alt.Y("Question:N", title=""),
+            yOffset=alt.YOffset("Age:N"),
+            color=alt.Color("Age:N", legend=alt.Legend(title="Age Group")),
+            tooltip=["Question", "Age", "Score", "Participant", "Gender"]
+        )
+        .properties(height=320)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+st.divider()
 
 
 
