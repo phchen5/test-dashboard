@@ -1,6 +1,8 @@
+# app.py
 import streamlit as st
 import pandas as pd
-import altair as alt
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 st.set_page_config(page_title="Survey Dashboard", layout="wide")
 
@@ -9,12 +11,21 @@ QUESTION_COLS = ["Question #1", "Question #2", "Question #3", "Question #4"]
 @st.cache_data
 def load_data(path: str = "test_data.csv") -> pd.DataFrame:
     df = pd.read_csv(path)
-    # Participant average across all questions
     df["Avg Score"] = df[QUESTION_COLS].mean(axis=1)
     return df
 
-df = load_data()
+def to_long(df: pd.DataFrame) -> pd.DataFrame:
+    return df.melt(
+        id_vars=["Participant", "Gender", "Age", "Avg Score"],
+        value_vars=QUESTION_COLS,
+        var_name="Question",
+        value_name="Score"
+    )
 
+# ---- Theme (Seaborn) ----
+sns.set_theme(style="ticks")
+
+df = load_data()
 st.title("Survey Dashboard")
 
 # -------------------------
@@ -24,16 +35,15 @@ st.sidebar.header("Filters")
 gender_filter = st.sidebar.multiselect(
     "Gender",
     options=sorted(df["Gender"].dropna().unique()),
-    default=sorted(df["Gender"].dropna().unique())
+    default=sorted(df["Gender"].dropna().unique()),
 )
 age_filter = st.sidebar.multiselect(
     "Age",
     options=sorted(df["Age"].dropna().unique()),
-    default=sorted(df["Age"].dropna().unique())
+    default=sorted(df["Age"].dropna().unique()),
 )
 
 filtered = df[df["Gender"].isin(gender_filter) & df["Age"].isin(age_filter)].copy()
-
 if filtered.empty:
     st.warning("No data matches the current filters. Try expanding Gender/Age selections.")
     st.stop()
@@ -49,122 +59,148 @@ worst_row = filtered.loc[filtered["Avg Score"].idxmin()]
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Participants (filtered)", len(filtered))
 c2.metric("Overall mean (Avg Score)", f"{filtered['Avg Score'].mean():.2f}")
-c3.metric(
-    "Highest participant Avg Score",
-    f"{best_row['Avg Score']:.2f}",
-    help=f"Highest participant average across Question #1–#4 within the filtered data (Participant {best_row['Participant']})."
-)
-c4.metric(
-    "Lowest participant Avg Score",
-    f"{worst_row['Avg Score']:.2f}",
-    help=f"Lowest participant average across Question #1–#4 within the filtered data (Participant {worst_row['Participant']})."
-)
+c3.metric("Highest participant Avg Score (Q1–Q4)", f"{best_row['Avg Score']:.2f}")
+c4.metric("Lowest participant Avg Score (Q1–Q4)", f"{worst_row['Avg Score']:.2f}")
 
 st.caption(
-    f"Highest Avg Score: Participant {best_row['Participant']} ({best_row['Gender']}, {best_row['Age']}) • "
-    f"Lowest Avg Score: Participant {worst_row['Participant']} ({worst_row['Gender']}, {worst_row['Age']})."
+    f"Highest: Participant {best_row['Participant']} ({best_row['Gender']}, {best_row['Age']}) • "
+    f"Lowest: Participant {worst_row['Participant']} ({worst_row['Gender']}, {worst_row['Age']})."
 )
 
 # -------------------------
-# Horizontal boxplots with side-by-side panels (facets)
+# Boxplots (Seaborn)
 # -------------------------
 st.markdown("**Score Distribution (Boxplots)**")
 
-group_by = st.radio(
-    "Compare distributions by",
-    options=["None", "Gender (side-by-side panels)", "Age (side-by-side panels)"],
-    horizontal=True
+mode = st.radio(
+    "How to compare distributions",
+    options=[
+        "Overall (no grouping)",
+        "Grouped boxplot (hue = Gender)",
+        "Side-by-side panels (one plot per Gender)",
+        "Side-by-side panels (one plot per Age group)",
+    ],
+    horizontal=False
 )
 
-long_df = filtered.melt(
-    id_vars=["Participant", "Gender", "Age"],
-    value_vars=QUESTION_COLS,
-    var_name="Question",
-    value_name="Score"
-)
+long_df = to_long(filtered)
 
-# Base chart: horizontal boxplot per question
-base = (
-    alt.Chart(long_df)
-    .mark_boxplot(size=18)
-    .encode(
-        x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
-        y=alt.Y("Question:N", title=""),
-        tooltip=["Question", "Score", "Participant", "Gender", "Age"]
+# Colors you asked for
+gender_palette = {"M": "tab:blue", "F": "tab:pink"}
+
+def draw_overall_boxplot(data_long: pd.DataFrame):
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.boxplot(
+        data=data_long,
+        x="Question", y="Score",
+        ax=ax
     )
-    .properties(height=260)
-)
+    sns.despine(offset=10, trim=True)
+    ax.set_xlabel("")
+    ax.set_ylabel("Score")
+    ax.set_ylim(0, 7)
+    fig.tight_layout()
+    return fig
 
-if group_by == "None":
-    st.altair_chart(base, use_container_width=True)
-
-elif group_by == "Gender (side-by-side panels)":
-    # Two equal-size panels: left=M, right=F
-    gender_order = ["M", "F"]
-
-    gender_facet = (
-        alt.Chart(long_df)
-        .transform_filter(alt.datum.Gender != None)
-        .mark_boxplot(size=18)
-        .encode(
-            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
-            y=alt.Y("Question:N", title=""),
-            color=alt.Color(
-                "Gender:N",
-                scale=alt.Scale(domain=["M", "F"], range=["#3B82F6", "#EC4899"]),
-                legend=None
-            ),
-            tooltip=["Question", "Score", "Participant", "Gender", "Age"]
-        )
-        .facet(
-            column=alt.Column("Gender:N", sort=gender_order, title=None)
-        )
-        .resolve_scale(x="shared", y="shared")
+def draw_grouped_hue_boxplot(data_long: pd.DataFrame):
+    # One chart, grouped by question, hue = gender (nested boxplot)
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.boxplot(
+        data=data_long,
+        x="Question", y="Score",
+        hue="Gender",
+        palette=gender_palette,
+        ax=ax
     )
+    sns.despine(offset=10, trim=True)
+    ax.set_xlabel("")
+    ax.set_ylabel("Score")
+    ax.set_ylim(0, 7)
+    ax.legend(title="Gender", loc="upper right")
+    fig.tight_layout()
+    return fig
 
-    st.altair_chart(gender_facet, use_container_width=True)
+def draw_panels_by_gender(data_long: pd.DataFrame):
+    # Two equal-size panels: M and F
+    genders = [g for g in ["M", "F"] if g in data_long["Gender"].unique()]
+    n = len(genders)
+    fig, axes = plt.subplots(1, n, figsize=(12, 4), sharey=True, sharex=True)
 
-else:  # Age (side-by-side panels)
-    # Warning: many age groups can get cramped in columns.
-    # If you have lots of ages, consider using row=... instead of column=...
-    age_order = sorted(long_df["Age"].dropna().unique())
+    if n == 1:
+        axes = [axes]
 
-    age_facet = (
-        alt.Chart(long_df)
-        .transform_filter(alt.datum.Age != None)
-        .mark_boxplot(size=18)
-        .encode(
-            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
-            y=alt.Y("Question:N", title=""),
-            color=alt.Color("Age:N", legend=None),
-            tooltip=["Question", "Score", "Participant", "Gender", "Age"]
+    for ax, g in zip(axes, genders):
+        sub = data_long[data_long["Gender"] == g]
+        sns.boxplot(
+            data=sub,
+            x="Question", y="Score",
+            color=gender_palette.get(g, None),
+            ax=ax
         )
-        .facet(
-            column=alt.Column("Age:N", sort=age_order, title=None)
+        sns.despine(offset=10, trim=True)
+        ax.set_title(f"Gender = {g}")
+        ax.set_xlabel("")
+        ax.set_ylabel("Score" if ax == axes[0] else "")
+        ax.set_ylim(0, 7)
+
+    fig.tight_layout()
+    return fig
+
+def draw_panels_by_age(data_long: pd.DataFrame):
+    # Panels for each age group (can get wide if many groups)
+    ages = sorted(data_long["Age"].dropna().unique())
+    n = len(ages)
+
+    # If many age groups, wrap into multiple rows
+    cols = min(4, n)
+    rows = (n + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(4.2 * cols, 3.6 * rows), sharey=True)
+    axes = axes.flatten() if n > 1 else [axes]
+
+    for i, age in enumerate(ages):
+        ax = axes[i]
+        sub = data_long[data_long["Age"] == age]
+        sns.boxplot(
+            data=sub,
+            x="Question", y="Score",
+            ax=ax
         )
-        .resolve_scale(x="shared", y="shared")
-    )
+        sns.despine(offset=10, trim=True)
+        ax.set_title(f"Age = {age}")
+        ax.set_xlabel("")
+        ax.set_ylabel("Score" if i % cols == 0 else "")
+        ax.set_ylim(0, 7)
 
-    st.altair_chart(age_facet, use_container_width=True)
+    # Hide unused axes
+    for j in range(n, len(axes)):
+        axes[j].axis("off")
 
+    fig.tight_layout()
+    return fig
 
+if mode == "Overall (no grouping)":
+    st.pyplot(draw_overall_boxplot(long_df))
+
+elif mode == "Grouped boxplot (hue = Gender)":
+    st.pyplot(draw_grouped_hue_boxplot(long_df))
+
+elif mode == "Side-by-side panels (one plot per Gender)":
+    st.pyplot(draw_panels_by_gender(long_df))
+
+else:  # panels by age
+    st.pyplot(draw_panels_by_age(long_df))
+
+st.divider()
 
 # -------------------------
 # Tabs
 # -------------------------
 tab1, tab2 = st.tabs(["Participant View", "Question View"])
 
-# -------------------------
-# Tab 1: Participant View
-# -------------------------
 with tab1:
     st.subheader("Participant View")
-
-    participant = st.selectbox(
-        "Select a participant",
-        options=sorted(filtered["Participant"].unique())
-    )
-
+    participant = st.selectbox("Select a participant", options=sorted(filtered["Participant"].unique()))
     p = filtered[filtered["Participant"] == participant].iloc[0]
 
     left, right = st.columns([1, 2])
@@ -174,44 +210,35 @@ with tab1:
         st.write(f"**Participant:** {p['Participant']}")
         st.write(f"**Gender:** {p['Gender']}")
         st.write(f"**Age:** {p['Age']}")
-        st.write(f"**Avg Score:** {p['Avg Score']:.2f}")
+        st.write(f"**Avg Score (Q1–Q4):** {p['Avg Score']:.2f}")
 
         st.markdown("**Raw Scores**")
-        score_table = pd.DataFrame({
-            "Question": QUESTION_COLS,
-            "Score": [p[q] for q in QUESTION_COLS]
-        })
-        st.dataframe(score_table, hide_index=True, use_container_width=True)
-
-    with right:
-        # Compare participant scores vs overall mean
-        overall_means = filtered[QUESTION_COLS].mean().reset_index()
-        overall_means.columns = ["Question", "Overall Mean"]
-
-        participant_scores = pd.DataFrame({
-            "Question": QUESTION_COLS,
-            "Participant Score": [p[q] for q in QUESTION_COLS]
-        })
-
-        comp = overall_means.merge(participant_scores, on="Question")
-        comp_long = comp.melt("Question", var_name="Series", value_name="Score")
-
-        chart = (
-            alt.Chart(comp_long)
-            .mark_bar()
-            .encode(
-                x=alt.X("Question:N", title=""),
-                y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 7])),
-                color="Series:N",
-                tooltip=["Question", "Series", "Score"]
-            )
-            .properties(height=300)
+        st.dataframe(
+            pd.DataFrame({"Question": QUESTION_COLS, "Score": [p[q] for q in QUESTION_COLS]}),
+            hide_index=True,
+            use_container_width=True
         )
 
-        st.markdown("**Participant vs Overall Mean**")
-        st.altair_chart(chart, use_container_width=True)
+    with right:
+        st.markdown("**Participant vs Overall Mean (by question)**")
+        comp = pd.DataFrame({
+            "Question": QUESTION_COLS,
+            "Participant": [p[q] for q in QUESTION_COLS],
+            "Overall Mean": [filtered[q].mean() for q in QUESTION_COLS],
+        })
+        comp_long = comp.melt("Question", var_name="Series", value_name="Score")
 
-    st.markdown("**Where do they rank (Avg Score)?**")
+        fig, ax = plt.subplots(figsize=(10, 3.5))
+        sns.barplot(data=comp_long, x="Question", y="Score", hue="Series", ax=ax)
+        sns.despine(offset=10, trim=True)
+        ax.set_ylim(0, 7)
+        ax.set_xlabel("")
+        ax.set_ylabel("Score")
+        ax.legend(title="")
+        fig.tight_layout()
+        st.pyplot(fig)
+
+    st.markdown("**Ranking (Avg Score across Q1–Q4)**")
     ranking = (
         filtered[["Participant", "Avg Score", "Gender", "Age"]]
         .sort_values("Avg Score", ascending=False)
@@ -220,12 +247,8 @@ with tab1:
     ranking["Rank"] = ranking.index + 1
     st.dataframe(ranking[["Rank", "Participant", "Avg Score", "Gender", "Age"]], use_container_width=True)
 
-# -------------------------
-# Tab 2: Question View
-# -------------------------
 with tab2:
     st.subheader("Question View")
-
     q = st.selectbox("Select a question", options=QUESTION_COLS)
 
     q_df = filtered[["Participant", "Gender", "Age", q]].rename(columns={q: "Score"})
@@ -233,67 +256,41 @@ with tab2:
     c1, c2, c3 = st.columns(3)
     c1.metric("Mean", f"{q_df['Score'].mean():.2f}")
     c2.metric("Median", f"{q_df['Score'].median():.2f}")
-    c3.metric("Std Dev", f"{q_df['Score'].std():.2f}")
-
-    # Distribution histogram
-    hist = (
-        alt.Chart(q_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("Score:Q", bin=alt.Bin(step=1), title="Score"),
-            y=alt.Y("count():Q", title="Count"),
-            tooltip=["count()"]
-        )
-        .properties(height=250)
-    )
-
-    # Boxplot by gender
-    box_gender = (
-        alt.Chart(q_df)
-        .mark_boxplot()
-        .encode(
-            x=alt.X("Gender:N", title="Gender"),
-            y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
-            tooltip=["Gender", "Score"]
-        )
-        .properties(height=250)
-    )
+    c3.metric("Std Dev", f"{q_df['Score'].std():.2f}" if len(q_df) > 1 else "—")
 
     left, right = st.columns(2)
-    with left:
-        st.markdown("**Distribution**")
-        st.altair_chart(hist, use_container_width=True)
-    with right:
-        st.markdown("**By Gender**")
-        st.altair_chart(box_gender, use_container_width=True)
 
-    # Table: top/bottom participants for that question
+    with left:
+        st.markdown("**Distribution (histogram)**")
+        fig, ax = plt.subplots(figsize=(6, 3.5))
+        sns.histplot(data=q_df, x="Score", bins=range(0, 9), ax=ax)
+        sns.despine(offset=10, trim=True)
+        ax.set_xlabel("Score")
+        ax.set_ylabel("Count")
+        fig.tight_layout()
+        st.pyplot(fig)
+
+    with right:
+        st.markdown("**By Gender (boxplot)**")
+        fig, ax = plt.subplots(figsize=(6, 3.5))
+        sns.boxplot(data=q_df, x="Gender", y="Score", palette=gender_palette, ax=ax)
+        sns.despine(offset=10, trim=True)
+        ax.set_ylim(0, 7)
+        ax.set_xlabel("Gender")
+        ax.set_ylabel("Score")
+        fig.tight_layout()
+        st.pyplot(fig)
+
     st.markdown("**Top / Bottom Participants**")
     top = q_df.sort_values("Score", ascending=False).head(5)
     bottom = q_df.sort_values("Score", ascending=True).head(5)
-
     t1, t2 = st.columns(2)
     with t1:
         st.markdown("Top 5")
-        st.dataframe(top, use_container_width=True, hide_index=True)
+        st.dataframe(top, hide_index=True, use_container_width=True)
     with t2:
         st.markdown("Bottom 5")
-        st.dataframe(bottom, use_container_width=True, hide_index=True)
-
-    # Breakdown by age
-    st.markdown("**Average by Age Group**")
-    age_means = q_df.groupby("Age")["Score"].mean().reset_index().rename(columns={"Score": "Mean Score"})
-    age_chart = (
-        alt.Chart(age_means)
-        .mark_bar()
-        .encode(
-            x=alt.X("Age:N", title="Age Group"),
-            y=alt.Y("Mean Score:Q", title="Mean Score", scale=alt.Scale(domain=[0, 7])),
-            tooltip=["Age", "Mean Score"]
-        )
-        .properties(height=250)
-    )
-    st.altair_chart(age_chart, use_container_width=True)
+        st.dataframe(bottom, hide_index=True, use_container_width=True)
 
 st.divider()
 
@@ -302,20 +299,15 @@ st.divider()
 # -------------------------
 st.subheader("Data")
 
-view_option = st.selectbox(
-    "Choose what to view",
-    options=["Filtered data (current view)", "Full data (all rows)"]
-)
-
+view_option = st.selectbox("Choose what to view", ["Filtered data (current view)", "Full data (all rows)"])
 data_to_show = filtered if view_option.startswith("Filtered") else df
 
 with st.expander("View dataset"):
     st.dataframe(data_to_show, use_container_width=True)
 
-csv_bytes = data_to_show.to_csv(index=False).encode("utf-8")
 st.download_button(
-    label="Download CSV",
-    data=csv_bytes,
+    "Download CSV",
+    data=data_to_show.to_csv(index=False).encode("utf-8"),
     file_name="survey_data.csv",
     mime="text/csv"
 )
