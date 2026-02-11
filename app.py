@@ -59,9 +59,8 @@ worst_row = filtered.loc[filtered["Avg Score"].idxmin()]
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Participants (filtered)", len(filtered))
 c2.metric("Overall mean (Avg Score)", f"{filtered['Avg Score'].mean():.2f}")
-c3.metric("Highest participant Avg Score")
-c4.metric("Lowest participant Avg Score")
-
+c3.metric("Highest participant Avg Score", f"{best_row['Avg Score']:.2f}")
+c4.metric("Lowest participant Avg Score", f"{worst_row['Avg Score']:.2f}")
 
 # -------------------------
 # Boxplots (Seaborn)
