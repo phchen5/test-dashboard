@@ -67,6 +67,8 @@ c4.metric("Lowest participant Avg Score", f"{worst_row['Avg Score']:.2f}")
 # -------------------------
 st.markdown("**Participant Distribution**")
 
+import matplotlib.ticker as ticker
+
 fig_dist, axes = plt.subplots(1, 2, figsize=(10, 3))
 
 # --- Gender Distribution ---
@@ -80,6 +82,9 @@ axes[0].set_title("Gender Distribution")
 axes[0].set_xlabel("")
 axes[0].set_ylabel("Count")
 
+# Force integer ticks
+axes[0].yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+
 # --- Age Distribution ---
 sns.countplot(
     data=filtered,
@@ -92,10 +97,12 @@ axes[1].set_title("Age Group Distribution")
 axes[1].set_xlabel("")
 axes[1].set_ylabel("Count")
 
-sns.despine(offset=10, trim=True)
-fig_dist.tight_layout()
+# Force integer ticks
+axes[1].yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
 
+fig_dist.tight_layout()
 st.pyplot(fig_dist)
+
 
 
 # -------------------------
