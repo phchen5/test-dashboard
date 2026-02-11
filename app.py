@@ -59,139 +59,79 @@ worst_row = filtered.loc[filtered["Avg Score"].idxmin()]
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Participants (filtered)", len(filtered))
 c2.metric("Overall mean (Avg Score)", f"{filtered['Avg Score'].mean():.2f}")
-c3.metric("Highest participant Avg Score (Q1–Q4)", f"{best_row['Avg Score']:.2f}")
-c4.metric("Lowest participant Avg Score (Q1–Q4)", f"{worst_row['Avg Score']:.2f}")
+c3.metric("Highest participant Avg Score")
+c4.metric("Lowest participant Avg Score")
 
-st.caption(
-    f"Highest: Participant {best_row['Participant']} ({best_row['Gender']}, {best_row['Age']}) • "
-    f"Lowest: Participant {worst_row['Participant']} ({worst_row['Gender']}, {worst_row['Age']})."
-)
 
 # -------------------------
 # Boxplots (Seaborn)
 # -------------------------
 st.markdown("**Score Distribution (Boxplots)**")
 
-mode = st.radio(
-    "How to compare distributions",
-    options=[
-        "Overall (no grouping)",
-        "Grouped boxplot (hue = Gender)",
-        "Side-by-side panels (one plot per Gender)",
-        "Side-by-side panels (one plot per Age group)",
-    ],
-    horizontal=False
+long_df = filtered.melt(
+    id_vars=["Participant", "Gender", "Age"],
+    value_vars=QUESTION_COLS,
+    var_name="Question",
+    value_name="Score"
 )
 
-long_df = to_long(filtered)
+# ---------- 1) Overall ----------
+st.markdown("**Overall Distribution**")
 
-# Colors you asked for
-gender_palette = {"M": "tab:blue", "F": "tab:pink"}
+fig1, ax1 = plt.subplots(figsize=(10, 4))
+sns.boxplot(
+    data=long_df,
+    x="Question",
+    y="Score",
+    ax=ax1
+)
+sns.despine(offset=10, trim=True)
+ax1.set_ylim(0, 7)
+ax1.set_xlabel("")
+ax1.set_ylabel("Score")
+fig1.tight_layout()
+st.pyplot(fig1)
 
-def draw_overall_boxplot(data_long: pd.DataFrame):
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.boxplot(
-        data=data_long,
-        x="Question", y="Score",
-        ax=ax
-    )
-    sns.despine(offset=10, trim=True)
-    ax.set_xlabel("")
-    ax.set_ylabel("Score")
-    ax.set_ylim(0, 7)
-    fig.tight_layout()
-    return fig
 
-def draw_grouped_hue_boxplot(data_long: pd.DataFrame):
-    # One chart, grouped by question, hue = gender (nested boxplot)
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.boxplot(
-        data=data_long,
-        x="Question", y="Score",
-        hue="Gender",
-        palette=gender_palette,
-        ax=ax
-    )
-    sns.despine(offset=10, trim=True)
-    ax.set_xlabel("")
-    ax.set_ylabel("Score")
-    ax.set_ylim(0, 7)
-    ax.legend(title="Gender", loc="upper right")
-    fig.tight_layout()
-    return fig
+# ---------- 2) Hue = Gender ----------
+st.markdown("**Distribution by Gender**")
 
-def draw_panels_by_gender(data_long: pd.DataFrame):
-    # Two equal-size panels: M and F
-    genders = [g for g in ["M", "F"] if g in data_long["Gender"].unique()]
-    n = len(genders)
-    fig, axes = plt.subplots(1, n, figsize=(12, 4), sharey=True, sharex=True)
+fig2, ax2 = plt.subplots(figsize=(10, 4))
+sns.boxplot(
+    data=long_df,
+    x="Question",
+    y="Score",
+    hue="Gender",
+    palette={"M": "tab:blue", "F": "tab:pink"},
+    ax=ax2
+)
+ax2.set_ylim(0, 7)
+ax2.set_xlabel("")
+ax2.set_ylabel("Score")
+ax2.legend(title="Gender")
+fig2.tight_layout()
+st.pyplot(fig2)
 
-    if n == 1:
-        axes = [axes]
 
-    for ax, g in zip(axes, genders):
-        sub = data_long[data_long["Gender"] == g]
-        sns.boxplot(
-            data=sub,
-            x="Question", y="Score",
-            color=gender_palette.get(g, None),
-            ax=ax
-        )
-        sns.despine(offset=10, trim=True)
-        ax.set_title(f"Gender = {g}")
-        ax.set_xlabel("")
-        ax.set_ylabel("Score" if ax == axes[0] else "")
-        ax.set_ylim(0, 7)
+# ---------- 3) Hue = Age ----------
+st.markdown("**Distribution by Age Group**")
 
-    fig.tight_layout()
-    return fig
+fig3, ax3 = plt.subplots(figsize=(10, 4))
+sns.boxplot(
+    data=long_df,
+    x="Question",
+    y="Score",
+    hue="Age",
+    palette="pastel",
+    ax=ax3
+)
+ax3.set_ylim(0, 7)
+ax3.set_xlabel("")
+ax3.set_ylabel("Score")
+ax3.legend(title="Age")
+fig3.tight_layout()
+st.pyplot(fig3)
 
-def draw_panels_by_age(data_long: pd.DataFrame):
-    # Panels for each age group (can get wide if many groups)
-    ages = sorted(data_long["Age"].dropna().unique())
-    n = len(ages)
-
-    # If many age groups, wrap into multiple rows
-    cols = min(4, n)
-    rows = (n + cols - 1) // cols
-
-    fig, axes = plt.subplots(rows, cols, figsize=(4.2 * cols, 3.6 * rows), sharey=True)
-    axes = axes.flatten() if n > 1 else [axes]
-
-    for i, age in enumerate(ages):
-        ax = axes[i]
-        sub = data_long[data_long["Age"] == age]
-        sns.boxplot(
-            data=sub,
-            x="Question", y="Score",
-            ax=ax
-        )
-        sns.despine(offset=10, trim=True)
-        ax.set_title(f"Age = {age}")
-        ax.set_xlabel("")
-        ax.set_ylabel("Score" if i % cols == 0 else "")
-        ax.set_ylim(0, 7)
-
-    # Hide unused axes
-    for j in range(n, len(axes)):
-        axes[j].axis("off")
-
-    fig.tight_layout()
-    return fig
-
-if mode == "Overall (no grouping)":
-    st.pyplot(draw_overall_boxplot(long_df))
-
-elif mode == "Grouped boxplot (hue = Gender)":
-    st.pyplot(draw_grouped_hue_boxplot(long_df))
-
-elif mode == "Side-by-side panels (one plot per Gender)":
-    st.pyplot(draw_panels_by_gender(long_df))
-
-else:  # panels by age
-    st.pyplot(draw_panels_by_age(long_df))
-
-st.divider()
 
 # -------------------------
 # Tabs
