@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.ticker as ticker
 
 st.set_page_config(page_title="Survey Dashboard", layout="wide")
 
@@ -22,10 +23,22 @@ def to_long(df: pd.DataFrame) -> pd.DataFrame:
         value_name="Score"
     )
 
-# ---- Theme (Seaborn) ----
-sns.set_theme(style="ticks")
+# -------------------------
+# Theme + Matplotlib polish
+# -------------------------
+sns.set_theme(style="darkgrid", context="talk")  # darker grid + bigger, cleaner text
+plt.rcParams.update({
+    "figure.facecolor": "white",
+    "axes.facecolor": "white",
+    "axes.titlesize": 14,
+    "axes.labelsize": 12,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "legend.fontsize": 11,
+})
 
 df = load_data()
+
 st.title("Survey Dashboard")
 
 # -------------------------
@@ -59,17 +72,30 @@ worst_row = filtered.loc[filtered["Avg Score"].idxmin()]
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Participants (filtered)", len(filtered))
 c2.metric("Overall mean (Avg Score)", f"{filtered['Avg Score'].mean():.2f}")
-c3.metric("Highest participant Avg Score", f"{best_row['Avg Score']:.2f}")
-c4.metric("Lowest participant Avg Score", f"{worst_row['Avg Score']:.2f}")
+c3.metric(
+    "Highest Avg Score (participant)",
+    f"{best_row['Avg Score']:.2f}",
+    help=f"Highest participant average across Q1–Q4 in the filtered data: {best_row['Participant']}."
+)
+c4.metric(
+    "Lowest Avg Score (participant)",
+    f"{worst_row['Avg Score']:.2f}",
+    help=f"Lowest participant average across Q1–Q4 in the filtered data: {worst_row['Participant']}."
+)
+
+st.caption(
+    f"Highest: {best_row['Participant']} ({best_row['Gender']}, {best_row['Age']}) • "
+    f"Lowest: {worst_row['Participant']} ({worst_row['Gender']}, {worst_row['Age']})."
+)
+
+st.divider()
 
 # -------------------------
 # Quick Demographic Distribution (Age + Gender)
 # -------------------------
-st.markdown("**Participant Distribution**")
+st.markdown("### Participant Distribution")
 
-import matplotlib.ticker as ticker
-
-fig_dist, axes = plt.subplots(1, 2, figsize=(10, 3))
+fig_dist, axes = plt.subplots(1, 2, figsize=(12, 3.6))
 
 # --- Gender Distribution ---
 sns.countplot(
@@ -78,37 +104,45 @@ sns.countplot(
     palette={"M": "tab:blue", "F": "tab:pink"},
     ax=axes[0]
 )
-axes[0].set_title("Gender Distribution")
+axes[0].set_title("Gender")
 axes[0].set_xlabel("")
 axes[0].set_ylabel("Count")
-
-# Force integer ticks
 axes[0].yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
 
+# Small count labels on bars
+for container in axes[0].containers:
+    axes[0].bar_label(container, fmt="%d", padding=3, fontsize=10)
+
 # --- Age Distribution ---
+age_order = sorted(filtered["Age"].unique())
 sns.countplot(
     data=filtered,
     x="Age",
     palette="pastel",
-    order=sorted(filtered["Age"].unique()),
+    order=age_order,
     ax=axes[1]
 )
-axes[1].set_title("Age Group Distribution")
+axes[1].set_title("Age Group")
 axes[1].set_xlabel("")
 axes[1].set_ylabel("Count")
-
-# Force integer ticks
 axes[1].yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+
+# Rotate if labels get tight
+axes[1].tick_params(axis="x", rotation=25)
+
+# Count labels
+for container in axes[1].containers:
+    axes[1].bar_label(container, fmt="%d", padding=3, fontsize=10)
 
 fig_dist.tight_layout()
 st.pyplot(fig_dist)
 
-
+st.divider()
 
 # -------------------------
 # Boxplots (Seaborn) + selector + legend outside
 # -------------------------
-st.markdown("**Score Distribution (Boxplots)**")
+st.markdown("### Score Distribution")
 
 split_by = st.selectbox(
     "Split distribution by",
@@ -116,51 +150,55 @@ split_by = st.selectbox(
     index=0
 )
 
-long_df = filtered.melt(
-    id_vars=["Participant", "Gender", "Age"],
-    value_vars=QUESTION_COLS,
-    var_name="Question",
-    value_name="Score"
-)
+long_df = to_long(filtered)
 
-fig, ax = plt.subplots(figsize=(10, 4))
+# Make the figure a bit taller for readability
+fig, ax = plt.subplots(figsize=(12, 4.2))
 
 if split_by == "None":
     sns.boxplot(
         data=long_df,
         x="Question",
         y="Score",
+        width=0.6,
         ax=ax
     )
 else:
     hue_col = "Gender" if split_by == "Gender" else "Age"
+    palette = {"M": "tab:blue", "F": "tab:pink"} if hue_col == "Gender" else "pastel"
 
     sns.boxplot(
         data=long_df,
         x="Question",
         y="Score",
         hue=hue_col,
-        palette={"M": "tab:blue", "F": "tab:pink"} if hue_col == "Gender" else "pastel",
+        palette=palette,
+        width=0.6,
         ax=ax
     )
 
-    # Move legend OUTSIDE the plot area (right side)
+    # Legend outside (right side)
     ax.legend(
         title=hue_col,
         loc="upper left",
         bbox_to_anchor=(1.02, 1),
         borderaxespad=0.0,
-        frameon=False
+        frameon=True
     )
 
+# Likert scale: force integer ticks only
 ax.set_ylim(0, 7)
+ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+
 ax.set_xlabel("")
 ax.set_ylabel("Score")
+ax.set_title("Boxplots by Question")
 
-# Make room on the right for the outside legend (only really needed when split_by != None)
-fig.tight_layout(rect=[0, 0, 0.82, 1])
+# Extra spacing to fit legend neatly when needed
+fig.tight_layout(rect=[0, 0, 0.82, 1] if split_by != "None" else [0, 0, 1, 1])
 
 st.pyplot(fig)
+
 
 
 
