@@ -66,13 +66,13 @@ st.caption(
 )
 
 # -------------------------
-# Horizontal boxplots (side-by-side within each question)
+# Horizontal boxplots with side-by-side panels (facets)
 # -------------------------
 st.markdown("**Score Distribution (Boxplots)**")
 
 group_by = st.radio(
     "Compare distributions by",
-    options=["None", "Gender", "Age"],
+    options=["None", "Gender (side-by-side panels)", "Age (side-by-side panels)"],
     horizontal=True
 )
 
@@ -83,55 +83,72 @@ long_df = filtered.melt(
     value_name="Score"
 )
 
-if group_by == "None":
-    chart = (
-        alt.Chart(long_df)
-        .mark_boxplot()
-        .encode(
-            x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
-            y=alt.Y("Question:N", title=""),
-            tooltip=["Question", "Score", "Participant", "Gender", "Age"]
-        )
-        .properties(height=260)
+# Base chart: horizontal boxplot per question
+base = (
+    alt.Chart(long_df)
+    .mark_boxplot(size=18)
+    .encode(
+        x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+        y=alt.Y("Question:N", title=""),
+        tooltip=["Question", "Score", "Participant", "Gender", "Age"]
     )
-    st.altair_chart(chart, use_container_width=True)
+    .properties(height=260)
+)
 
-elif group_by == "Gender":
-    chart = (
+if group_by == "None":
+    st.altair_chart(base, use_container_width=True)
+
+elif group_by == "Gender (side-by-side panels)":
+    # Two equal-size panels: left=M, right=F
+    gender_order = ["M", "F"]
+
+    gender_facet = (
         alt.Chart(long_df)
-        .mark_boxplot()
+        .transform_filter(alt.datum.Gender != None)
+        .mark_boxplot(size=18)
         .encode(
             x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
             y=alt.Y("Question:N", title=""),
-            # KEY: for horizontal boxplots, use yOffset to put M/F side-by-side within each question
-            yOffset=alt.YOffset("Gender:N"),
             color=alt.Color(
                 "Gender:N",
-                scale=alt.Scale(domain=["M", "F"], range=["#3B82F6", "#EC4899"]),  # blue, pink
-                legend=alt.Legend(title="Gender")
+                scale=alt.Scale(domain=["M", "F"], range=["#3B82F6", "#EC4899"]),
+                legend=None
             ),
-            tooltip=["Question", "Gender", "Score", "Participant", "Age"]
+            tooltip=["Question", "Score", "Participant", "Gender", "Age"]
         )
-        .properties(height=300)
+        .facet(
+            column=alt.Column("Gender:N", sort=gender_order, title=None)
+        )
+        .properties(height=260)
+        .resolve_scale(x="shared", y="shared")
     )
-    st.altair_chart(chart, use_container_width=True)
 
-else:  # group_by == "Age"
-    chart = (
+    st.altair_chart(gender_facet, use_container_width=True)
+
+else:  # Age (side-by-side panels)
+    # Warning: many age groups can get cramped in columns.
+    # If you have lots of ages, consider using row=... instead of column=...
+    age_order = sorted(long_df["Age"].dropna().unique())
+
+    age_facet = (
         alt.Chart(long_df)
-        .mark_boxplot()
+        .transform_filter(alt.datum.Age != None)
+        .mark_boxplot(size=18)
         .encode(
             x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
             y=alt.Y("Question:N", title=""),
-            yOffset=alt.YOffset("Age:N"),
-            color=alt.Color("Age:N", legend=alt.Legend(title="Age Group")),
-            tooltip=["Question", "Age", "Score", "Participant", "Gender"]
+            color=alt.Color("Age:N", legend=None),
+            tooltip=["Question", "Score", "Participant", "Gender", "Age"]
         )
-        .properties(height=320)
+        .facet(
+            column=alt.Column("Age:N", sort=age_order, title=None)
+        )
+        .properties(height=260)
+        .resolve_scale(x="shared", y="shared")
     )
-    st.altair_chart(chart, use_container_width=True)
 
-st.divider()
+    st.altair_chart(age_facet, use_container_width=True)
+
 
 
 # -------------------------
