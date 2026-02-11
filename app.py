@@ -43,20 +43,40 @@ if filtered.empty:
 # -------------------------
 st.subheader("Overview")
 
+# Who is highest/lowest (participant avg across Q1–Q4)
+best_row = filtered.loc[filtered["Avg Score"].idxmax()]
+worst_row = filtered.loc[filtered["Avg Score"].idxmin()]
+
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Participants", len(filtered))
-c2.metric("Overall Avg Score", f"{filtered['Avg Score'].mean():.2f}")
-c3.metric("Highest Avg", f"{filtered['Avg Score'].max():.2f}")
-c4.metric("Lowest Avg", f"{filtered['Avg Score'].min():.2f}")
+c1.metric("Participants (filtered)", len(filtered))
+c2.metric("Overall mean (Avg Score)", f"{filtered['Avg Score'].mean():.2f}")
+c3.metric(
+    "Highest participant Avg Score",
+    f"{best_row['Avg Score']:.2f}",
+    help=f"Highest average by a Participant"
+)
+c4.metric(
+    "Lowest participant Avg Score",
+    f"{worst_row['Avg Score']:.2f}",
+    help=f"Lowest average by a Participant"
+)
 
-# Summary statistics table
-st.markdown("**Summary Statistics (Filtered Data)**")
-summary_stats = filtered[QUESTION_COLS + ["Avg Score"]].describe().T
-summary_stats = summary_stats[["count", "mean", "std", "min", "25%", "50%", "75%", "max"]].round(2)
-st.dataframe(summary_stats, use_container_width=True)
+# Extra clarity line (so viewers don't guess what it means)
+st.caption(
+    f"Highest Avg Score: Participant {best_row['Participant']} ({best_row['Gender']}, {best_row['Age']}) • "
+    f"Lowest Avg Score: Participant {worst_row['Participant']} ({worst_row['Gender']}, {worst_row['Age']})."
+)
 
-# Boxplots for each question
+# -------------------------
+# Boxplots (horizontal) with grouping option
+# -------------------------
 st.markdown("**Score Distribution (Boxplots)**")
+
+group_by = st.radio(
+    "Group boxplots by",
+    options=["None", "Gender", "Age"],
+    horizontal=True
+)
 
 long_df = filtered.melt(
     id_vars=["Participant", "Gender", "Age"],
@@ -65,20 +85,27 @@ long_df = filtered.melt(
     value_name="Score"
 )
 
-box = (
-    alt.Chart(long_df)
-    .mark_boxplot()
-    .encode(
-        x=alt.X("Question:N", title=""),
-        y=alt.Y("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
-        tooltip=["Question", "Score"]
+# Base encoding: horizontal boxplot (Score on x, Question on y)
+base = alt.Chart(long_df).mark_boxplot().encode(
+    x=alt.X("Score:Q", scale=alt.Scale(domain=[0, 7]), title="Score"),
+    y=alt.Y("Question:N", title=""),
+    tooltip=["Participant", "Gender", "Age", "Question", "Score"]
+).properties(height=260)
+
+if group_by == "None":
+    st.altair_chart(base, use_container_width=True)
+
+else:
+    group_field = "Gender" if group_by == "Gender" else "Age"
+
+    # Facet by group so distributions are easy to compare
+    faceted = base.facet(
+        row=alt.Row(f"{group_field}:N", title=group_by)
+    ).resolve_scale(
+        y="independent"
     )
-    .properties(height=260)
-)
 
-st.altair_chart(box, use_container_width=True)
-
-st.divider()
+    st.altair_chart(faceted, use_container_width=True)
 
 # -------------------------
 # Tabs
