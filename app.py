@@ -7,76 +7,6 @@ st.set_page_config(page_title="Survey Dashboard", layout="wide")
 QUESTION_COLS = ["Question #1", "Question #2", "Question #3", "Question #4"]
 
 @st.cache_data
-def load_data(path="test_data.csv") -> pd.DataFrame:
-    df = pd.read_csv(path)
-    # Compute average score across questions
-    df["Avg Score"] = df[QUESTION_COLS].mean(axis=1)
-    return df
-
-df = load_data()
-
-st.title("Survey Dashboard")
-
-# -------------------------
-# Sidebar filters (global)
-# -------------------------
-st.sidebar.header("Filters")
-gender_filter = st.sidebar.multiselect(
-    "Gender",
-    options=sorted(df["Gender"].unique()),
-    default=sorted(df["Gender"].unique())
-)
-age_filter = st.sidebar.multiselect(
-    "Age",
-    options=sorted(df["Age"].unique()),
-    default=sorted(df["Age"].unique())
-)
-
-filtered = df[df["Gender"].isin(gender_filter) & df["Age"].isin(age_filter)].copy()
-
-if filtered.empty:
-    st.warning("No data matches the current filters. Try expanding Gender/Age selections.")
-    st.stop()
-
-# -------------------------
-# Top overview section
-# -------------------------
-st.subheader("Overview")
-
-# Who is highest/lowest (participant avg across Q1–Q4)
-best_row = filtered.loc[filtered["Avg Score"].idxmax()]
-worst_row = filtered.loc[filtered["Avg Score"].idxmin()]
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Participants (filtered)", len(filtered))
-c2.metric("Overall mean (Avg Score)", f"{filtered['Avg Score'].mean():.2f}")
-c3.metric(
-    "Highest participant Avg Score",
-    f"{best_row['Avg Score']:.2f}",
-    help=f"Highest average by a Participant"
-)
-c4.metric(
-    "Lowest participant Avg Score",
-    f"{worst_row['Avg Score']:.2f}",
-    help=f"Lowest average by a Participant"
-)
-
-# Extra clarity line (so viewers don't guess what it means)
-st.caption(
-    f"Highest Avg Score: Participant {best_row['Participant']} ({best_row['Gender']}, {best_row['Age']}) • "
-    f"Lowest Avg Score: Participant {worst_row['Participant']} ({worst_row['Gender']}, {worst_row['Age']})."
-)
-
-
-import streamlit as st
-import pandas as pd
-import altair as alt
-
-st.set_page_config(page_title="Survey Dashboard", layout="wide")
-
-QUESTION_COLS = ["Question #1", "Question #2", "Question #3", "Question #4"]
-
-@st.cache_data
 def load_data(path: str = "test_data.csv") -> pd.DataFrame:
     df = pd.read_csv(path)
     # Participant average across all questions
@@ -202,7 +132,6 @@ else:  # group_by == "Age"
     st.altair_chart(chart, use_container_width=True)
 
 st.divider()
-
 
 
 # -------------------------
