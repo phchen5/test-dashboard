@@ -1,9 +1,7 @@
-# app.py
+# app.py (Plotly version)
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import matplotlib.ticker as ticker
+import plotly.express as px
 
 st.set_page_config(page_title="Survey Dashboard", layout="wide")
 
@@ -22,20 +20,6 @@ def to_long(df: pd.DataFrame) -> pd.DataFrame:
         var_name="Question",
         value_name="Score"
     )
-
-# -------------------------
-# Theme + Matplotlib polish
-# -------------------------
-sns.set_theme(style="darkgrid", context="talk")  # darker grid + bigger, cleaner text
-plt.rcParams.update({
-    "figure.facecolor": "white",
-    "axes.facecolor": "white",
-    "axes.titlesize": 14,
-    "axes.labelsize": 12,
-    "xtick.labelsize": 11,
-    "ytick.labelsize": 11,
-    "legend.fontsize": 11,
-})
 
 df = load_data()
 
@@ -62,7 +46,7 @@ if filtered.empty:
     st.stop()
 
 # -------------------------
-# Overview (top part)
+# Overview
 # -------------------------
 st.subheader("Overview")
 
@@ -91,56 +75,69 @@ st.caption(
 st.divider()
 
 # -------------------------
-# Quick Demographic Distribution (Age + Gender)
+# Participant Distribution (Plotly)
 # -------------------------
 st.markdown("### Participant Distribution")
 
-fig_dist, axes = plt.subplots(1, 2, figsize=(12, 3.6))
+gender_counts = filtered["Gender"].value_counts().reset_index()
+gender_counts.columns = ["Gender", "Count"]
 
-# --- Gender Distribution ---
-sns.countplot(
-    data=filtered,
-    x="Gender",
-    palette={"M": "tab:blue", "F": "tab:pink"},
-    ax=axes[0]
+age_order = sorted(filtered["Age"].dropna().unique())
+age_counts = (
+    filtered["Age"]
+    .value_counts()
+    .reindex(age_order)
+    .fillna(0)
+    .astype(int)
+    .reset_index()
 )
-axes[0].set_title("Gender")
-axes[0].set_xlabel("")
-axes[0].set_ylabel("Count")
-axes[0].yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+age_counts.columns = ["Age", "Count"]
 
-# Small count labels on bars
-for container in axes[0].containers:
-    axes[0].bar_label(container, fmt="%d", padding=3, fontsize=10)
+colL, colR = st.columns(2)
 
-# --- Age Distribution ---
-age_order = sorted(filtered["Age"].unique())
-sns.countplot(
-    data=filtered,
-    x="Age",
-    palette="pastel",
-    order=age_order,
-    ax=axes[1]
-)
-axes[1].set_title("Age Group")
-axes[1].set_xlabel("")
-axes[1].set_ylabel("Count")
-axes[1].yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+with colL:
+    fig_gender = px.bar(
+        gender_counts,
+        x="Gender",
+        y="Count",
+        text="Count",
+        template="plotly_dark",
+        title="Gender"
+    )
+    fig_gender.update_traces(marker_color=["#3B82F6" if g == "M" else "#EC4899" for g in gender_counts["Gender"]])
+    fig_gender.update_layout(
+        margin=dict(l=20, r=20, t=50, b=20),
+        xaxis_title="",
+        yaxis_title="Count",
+        yaxis_dtick=1,
+    )
+    fig_gender.update_traces(textposition="outside", cliponaxis=False)
+    st.plotly_chart(fig_gender, use_container_width=True)
 
-# Rotate if labels get tight
-axes[1].tick_params(axis="x", rotation=25)
-
-# Count labels
-for container in axes[1].containers:
-    axes[1].bar_label(container, fmt="%d", padding=3, fontsize=10)
-
-fig_dist.tight_layout()
-st.pyplot(fig_dist)
+with colR:
+    fig_age = px.bar(
+        age_counts,
+        x="Age",
+        y="Count",
+        text="Count",
+        template="plotly_dark",
+        title="Age Group",
+        category_orders={"Age": age_order},
+    )
+    fig_age.update_layout(
+        margin=dict(l=20, r=20, t=50, b=20),
+        xaxis_title="",
+        yaxis_title="Count",
+        yaxis_dtick=1,
+        xaxis_tickangle=-25,
+    )
+    fig_age.update_traces(textposition="outside", cliponaxis=False)
+    st.plotly_chart(fig_age, use_container_width=True)
 
 st.divider()
 
 # -------------------------
-# Boxplots (Seaborn) + selector + legend outside
+# Score Distribution (Boxplots) (Plotly)
 # -------------------------
 st.markdown("### Score Distribution")
 
@@ -152,54 +149,59 @@ split_by = st.selectbox(
 
 long_df = to_long(filtered)
 
-# Make the figure a bit taller for readability
-fig, ax = plt.subplots(figsize=(12, 4.2))
+# Order questions nicely (keeps Q1..Q4 order)
+question_order = QUESTION_COLS
+
+color_map_gender = {"M": "#3B82F6", "F": "#EC4899"}
 
 if split_by == "None":
-    sns.boxplot(
-        data=long_df,
+    fig_box = px.box(
+        long_df,
         x="Question",
         y="Score",
-        width=0.6,
-        ax=ax
+        points="all",  # show individual points (nice for small datasets)
+        template="plotly_dark",
+        category_orders={"Question": question_order},
+        title="Boxplots by Question"
+    )
+    fig_box.update_layout(
+        margin=dict(l=20, r=20, t=60, b=20),
+        xaxis_title="",
+        yaxis_title="Score",
     )
 else:
     hue_col = "Gender" if split_by == "Gender" else "Age"
-    palette = {"M": "tab:blue", "F": "tab:pink"} if hue_col == "Gender" else "pastel"
 
-    sns.boxplot(
-        data=long_df,
+    fig_box = px.box(
+        long_df,
         x="Question",
         y="Score",
-        hue=hue_col,
-        palette=palette,
-        width=0.6,
-        ax=ax
+        color=hue_col,
+        points="all",
+        template="plotly_dark",
+        category_orders={"Question": question_order, "Age": age_order},
+        color_discrete_map=color_map_gender if hue_col == "Gender" else None,
+        title=f"Boxplots by Question (split by {hue_col})"
     )
 
-    # Legend outside (right side)
-    ax.legend(
-        title=hue_col,
-        loc="upper left",
-        bbox_to_anchor=(1.02, 1),
-        borderaxespad=0.0,
-        frameon=True
+    # Legend outside to the right
+    fig_box.update_layout(
+        legend=dict(
+            title=hue_col,
+            x=1.02,
+            y=1.0,
+            xanchor="left",
+            yanchor="top"
+        ),
+        margin=dict(l=20, r=180, t=60, b=20),  # extra right margin for legend
+        xaxis_title="",
+        yaxis_title="Score",
     )
 
-# Likert scale: force integer ticks only
-ax.set_ylim(0, 7)
-ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+# Force integer ticks + fix score range (1–7 scale; keeping 0–7 is fine too)
+fig_box.update_yaxes(range=[0, 7], dtick=1)
 
-ax.set_xlabel("")
-ax.set_ylabel("Score")
-ax.set_title("Boxplots by Question")
-
-# Extra spacing to fit legend neatly when needed
-fig.tight_layout(rect=[0, 0, 0.82, 1] if split_by != "None" else [0, 0, 1, 1])
-
-st.pyplot(fig)
-
-
+st.plotly_chart(fig_box, use_container_width=True)
 
 
 # -------------------------
