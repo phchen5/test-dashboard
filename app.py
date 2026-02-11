@@ -119,7 +119,6 @@ elif group_by == "Gender (side-by-side panels)":
         .facet(
             column=alt.Column("Gender:N", sort=gender_order, title=None)
         )
-        .properties(height=260)
         .resolve_scale(x="shared", y="shared")
     )
 
@@ -143,7 +142,6 @@ else:  # Age (side-by-side panels)
         .facet(
             column=alt.Column("Age:N", sort=age_order, title=None)
         )
-        .properties(height=260)
         .resolve_scale(x="shared", y="shared")
     )
 
